@@ -1,3 +1,12 @@
+## Companion 0.1.2
+
+- 用当前用户的交互式 Windows 计划任务代替单一 HKCU Run 启动项：登录、解锁触发，另以一分钟间隔补查；单实例、允许电池运行、无运行时长上限、不唤醒电脑。
+- `--recover` 在未发现同一 Windows 会话内的 Codex 桌面进程时退出，不请求额度；已有小助手时由互斥锁拒绝重复实例。
+- CompanionRecoveryGate 保存用户主动退出时间，当前 Codex 实例不立即重启小助手，新 Codex 实例可恢复。手动启动清除暂停。
+- CompanionScheduledStartup 通过系统 Task Scheduler COM 服务管理本工具任务，避免依赖安装进程的虚拟化 HKCU 视图；取消托盘自动启动选项会禁用任务。
+- 本机只读对照发现：Codex 内的工具进程与计划任务进程对相同 LocalAppData 路径读到不同文件，前者实际位于应用 LocalCache；同一注册表探针也未在后者可见。不能将 Codex 内部读取 Run 值等同于 Windows 登录自动启动验收。
+- Windows 触发机制参考：[LogonTrigger](https://learn.microsoft.com/en-us/windows/win32/taskschd/logontrigger)、[InteractiveToken](https://learn.microsoft.com/en-us/windows/win32/taskschd/taskschedulerschema-logontype-principaltype-element)。
+
 ## Companion 0.1.1
 
 - CompanionWindow 的固定尺寸额度条与详情 Popup 分离，避免展开时移动额度入口；Popup 保留悬停、固定和任务选择交互。

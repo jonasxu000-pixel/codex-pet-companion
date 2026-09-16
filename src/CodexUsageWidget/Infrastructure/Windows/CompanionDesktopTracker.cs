@@ -16,21 +16,7 @@ public static class CompanionDesktopTracker
 
     public static CompanionAnchor Read()
     {
-        var open = false;
-        foreach (var name in new[] { "ChatGPT", "Codex" })
-        foreach (var process in Process.GetProcessesByName(name))
-        {
-            using (process)
-            {
-                try
-                {
-                    if (process.MainWindowHandle != IntPtr.Zero &&
-                        (process.MainModule?.FileName.Contains("OpenAI.Codex", StringComparison.OrdinalIgnoreCase) == true ||
-                         name == "Codex")) open = true;
-                }
-                catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) { }
-            }
-        }
+        var open = DesktopStartTimes().Count > 0;
         var screen = System.Windows.Forms.Screen.PrimaryScreen?.WorkingArea ?? new System.Drawing.Rectangle(0, 0, 1920, 1080);
         var fallback = new CompanionAnchor(open, false, screen.Right - 220, screen.Bottom - 120, 0, 0,
             screen.X, screen.Y, screen.Width, screen.Height);
@@ -71,6 +57,27 @@ public static class CompanionDesktopTracker
         }
     }
 
+    public static IReadOnlyList<DateTimeOffset> DesktopStartTimes()
+    {
+        var starts = new List<DateTimeOffset>();
+        using var current = Process.GetCurrentProcess();
+        foreach (var name in new[] { "ChatGPT", "Codex" })
+        foreach (var process in Process.GetProcessesByName(name))
+        {
+            using (process)
+            {
+                try
+                {
+                    if (process.SessionId == current.SessionId && process.MainWindowHandle != IntPtr.Zero &&
+                        (process.MainModule?.FileName.Contains("OpenAI.Codex", StringComparison.OrdinalIgnoreCase) == true ||
+                         name == "Codex")) starts.Add(process.StartTime.ToUniversalTime());
+                }
+                catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) { }
+            }
+        }
+        return starts;
+    }
+
     private static JsonElement Property(JsonElement root, JsonElement atom, string name) =>
         root.TryGetProperty(name, out var value) ? value : atom.TryGetProperty(name, out value) ? value : default;
     private static double Number(JsonElement element, string name, double fallback = 0) =>
@@ -94,6 +101,11 @@ public static class CompanionDesktopTracker
 
     public static bool StartupEnabled()
     {
+        try
+        {
+            if (CompanionScheduledStartup.GetEnabled() is { } enabled) return enabled;
+        }
+        catch (COMException) { }
         using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
         return key?.GetValue("CodexPetCompanion") is string;
     }
@@ -101,6 +113,11 @@ public static class CompanionDesktopTracker
     public static void SetStartup(bool enabled)
     {
         using var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
+        if (CompanionScheduledStartup.TrySetEnabled(enabled))
+        {
+            key.DeleteValue("CodexPetCompanion", false);
+            return;
+        }
         if (enabled) key.SetValue("CodexPetCompanion", "\"" + Environment.ProcessPath + "\" --startup");
         else key.DeleteValue("CodexPetCompanion", false);
     }

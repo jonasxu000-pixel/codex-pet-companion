@@ -52,7 +52,14 @@ public partial class App : System.Windows.Application, IDisposable
         {
             if (!e.Args.Contains("--classic", StringComparer.OrdinalIgnoreCase))
             {
-                var mode = e.Args.Contains("--startup", StringComparer.OrdinalIgnoreCase) ? "Windows startup" : "manual";
+                var recovery = e.Args.Contains("--recover", StringComparer.OrdinalIgnoreCase);
+                if (recovery && !CompanionRecoveryGate.Current.CanRecover(CompanionDesktopTracker.DesktopStartTimes()))
+                {
+                    Shutdown();
+                    return;
+                }
+                if (!recovery) CompanionRecoveryGate.Current.Resume();
+                var mode = recovery ? "Windows scheduled recovery" : e.Args.Contains("--startup", StringComparer.OrdinalIgnoreCase) ? "Windows startup" : "manual";
                 _logger.Info($"Companion started ({mode}); version {typeof(App).Assembly.GetName().Version}.");
                 var companion = new CompanionWindow(_logger);
                 MainWindow = companion;
@@ -150,6 +157,7 @@ public partial class App : System.Windows.Application, IDisposable
 
     protected override void OnSessionEnding(SessionEndingCancelEventArgs e)
     {
+        _logger?.Info($"Windows session ending: {e.ReasonSessionEnding}.");
         base.OnSessionEnding(e);
         if (!e.Cancel && MainWindow is MainWindow window)
         {

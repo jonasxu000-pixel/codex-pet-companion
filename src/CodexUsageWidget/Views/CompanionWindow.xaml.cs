@@ -43,15 +43,25 @@ public partial class CompanionWindow : Window, IAsyncDisposable
         menu.Items.Add("显示 / 隐藏", null, (_, _) => Dispatcher.Invoke(() => { _hidden = !_hidden; Tick(); }));
         menu.Items.Add("固定 / 收起详情", null, (_, _) => Dispatcher.Invoke(TogglePin));
         menu.Items.Add("刷新额度", null, (_, _) => Dispatcher.Invoke(() => _ = RefreshQuotaAsync()));
-        var startup = new System.Windows.Forms.ToolStripMenuItem("登录 Windows 后待命") { Checked = CompanionDesktopTracker.StartupEnabled(), CheckOnClick = true };
+        var startup = new System.Windows.Forms.ToolStripMenuItem("自动随 Codex 启动") { Checked = CompanionDesktopTracker.StartupEnabled(), CheckOnClick = true };
         startup.Click += (_, _) =>
         {
             try { CompanionDesktopTracker.SetStartup(startup.Checked); }
-            catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
+            catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException or System.Runtime.InteropServices.COMException)
             { startup.Checked = !startup.Checked; System.Windows.MessageBox.Show("无法保存启动设置。", "Codex 小助手"); }
         };
         menu.Items.Add(startup);
-        menu.Items.Add("退出小助手", null, (_, _) => Dispatcher.Invoke(Close));
+        menu.Items.Add("退出本次，下次打开 Codex 时恢复", null, (_, _) => Dispatcher.Invoke(() =>
+        {
+            try
+            {
+                CompanionRecoveryGate.Current.Pause(DateTimeOffset.UtcNow);
+                _logger.Info("Tray exit requested; recovery paused for current Codex instances.");
+                Close();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            { System.Windows.MessageBox.Show("无法保存退出设置，请先关闭自动启动选项。", "Codex 小助手"); }
+        }));
         _tray.ContextMenuStrip = menu;
         _tray.MouseClick += (_, e) => { if (e.Button == System.Windows.Forms.MouseButtons.Left) Dispatcher.Invoke(() => { _hidden = false; TogglePin(); }); };
         _usage.SnapshotUpdated += snapshot => Dispatcher.InvokeAsync(() => { _snapshot = snapshot; _quotaError = null; Render(); });
