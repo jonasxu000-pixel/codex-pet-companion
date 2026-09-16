@@ -16,12 +16,18 @@
 
 ## 使用
 
-解压完整 Windows 发布包，双击 **CodexPetCompanion.exe**。发布包自带 .NET 运行时，无需另装。
+解压完整 Windows 发布包，双击 **install.cmd**。它会安装到 `%LOCALAPPDATA%\Programs\CodexPetCompanion\版本号`，注册当前用户的 Windows 登录启动项并启动小助手，无需管理员权限。安装完成后可以移动下载目录；发布包自带 .NET 运行时。
+
+也可以直接运行 **CodexPetCompanion.exe** 临时试用；仅双击 EXE 不会自动注册启动项。
 需要已经登录的 Codex 桌面版；优先自动发现桌面版捆绑的 CLI，其次检查 PATH。
 非标准安装可设置 `CODEX_USAGE_WIDGET_CODEX_PATH` 指向实际的 Codex CLI。
 
 先在 Codex 中开启官方宠物。本工具不会自动修改 Codex 设置。
-右键系统托盘中的小助手图标可以退出或调整启动选项。不要只移动单个 EXE 后保留旧启动项；移动整个程序目录后重新开关启动选项。
+右键系统托盘中的小助手图标可以退出或调整启动选项。登录后小助手先在托盘待命，每秒检查 Codex 是否打开，不需要发送聊天消息。主动选择“退出小助手”后，本次登录内需手动重开；下次 Windows 登录按启动项运行。
+
+0.1.1 使用暖白界面与统一的任务选择器，额度条保持原位，详情单独淡入展开。宠物靠左时额度条自动放在右边。动画遵循 Windows 的界面动画开关。
+
+启动日志位于 `%LOCALAPPDATA%\CodexPetCompanion\logs`，记录版本、启动方式和 Codex 出现/关闭，不记录对话内容。Windows 若在任务管理器中禁用了启动项，需要在那里重新启用。
 
 ## 数据与限制
 

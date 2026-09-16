@@ -76,6 +76,17 @@ public static class CompanionDesktopTracker
     private static double Number(JsonElement element, string name, double fallback = 0) =>
         element.TryGetProperty(name, out var value) && value.TryGetDouble(out var number) ? number : fallback;
 
+    public static (double Left, double Top) BadgePosition(CompanionAnchor anchor, double width, double height, double scaleX, double scaleY)
+    {
+        var left = anchor.PetOpen ? anchor.X - width - 12 * scaleX : anchor.X;
+        if (anchor.PetOpen && left < anchor.ScreenX + 8)
+            left = anchor.X + anchor.Width + 12 * scaleX;
+        var top = anchor.PetOpen ? anchor.Y + Math.Min(anchor.Height / 2, 32 * scaleY) : anchor.Y;
+        left = Math.Clamp(left, anchor.ScreenX + 8, Math.Max(anchor.ScreenX + 8, anchor.ScreenX + anchor.ScreenWidth - width - 8));
+        top = Math.Clamp(top, anchor.ScreenY + 8, Math.Max(anchor.ScreenY + 8, anchor.ScreenY + anchor.ScreenHeight - height - 8));
+        return (left, top);
+    }
+
     public static (int X, int Y) CursorPosition()
     {
         GetCursorPos(out var point); return (point.X, point.Y);
@@ -90,7 +101,7 @@ public static class CompanionDesktopTracker
     public static void SetStartup(bool enabled)
     {
         using var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
-        if (enabled) key.SetValue("CodexPetCompanion", "\"" + Environment.ProcessPath + "\"");
+        if (enabled) key.SetValue("CodexPetCompanion", "\"" + Environment.ProcessPath + "\" --startup");
         else key.DeleteValue("CodexPetCompanion", false);
     }
 

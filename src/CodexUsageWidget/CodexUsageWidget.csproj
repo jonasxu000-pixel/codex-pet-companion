@@ -10,7 +10,7 @@
     <RootNamespace>CodexUsageWidget</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\CodexUsageWidget.ico</ApplicationIcon>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <Authors>Ognjen Marinković</Authors>
     <Company>ognjeeen</Company>
     <Description>Local Windows widget for Codex subscription usage.</Description>
@@ -22,5 +22,7 @@
   <ItemGroup>
     <None Include="..\..\LICENSE" Link="LICENSE" CopyToPublishDirectory="PreserveNewest" />
     <None Include="..\..\README.md" Link="README.md" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\scripts\install.ps1" Link="install.ps1" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\scripts\install.cmd" Link="install.cmd" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

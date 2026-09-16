@@ -1,7 +1,8 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
+using System.Windows.Controls.Primitives;
+using CodexUsageWidget.Infrastructure.Logging;
 using System.Windows.Media;
 using System.Windows.Threading;
 using CodexUsageWidget.Application;
@@ -15,8 +16,10 @@ public partial class CompanionWindow : Window, IAsyncDisposable
 {
     private readonly UsageMonitor _usage = new(new CodexUsageProvider(new CodexAppServerSession()), requestTimeout: TimeSpan.FromSeconds(20));
     private readonly CompanionActivityReader _activity = new(CompanionDesktopTracker.CodexHome);
-    private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private readonly System.Windows.Forms.NotifyIcon _tray;
+    private readonly IAppLogger _logger;
+    private bool _readFailed;
     private CompanionAnchor? _anchor;
     private UsageSnapshot? _snapshot;
     private IReadOnlyList<CompanionActivity> _sessions = [];
@@ -25,9 +28,11 @@ public partial class CompanionWindow : Window, IAsyncDisposable
     private string? _selectedId;
     private string? _quotaError;
 
-    public CompanionWindow()
+    public CompanionWindow(IAppLogger logger)
     {
+        _logger = logger;
         InitializeComponent();
+        DetailsPopup.PopupAnimation = SystemParameters.ClientAreaAnimation ? PopupAnimation.Fade : PopupAnimation.None;
         _tray = new System.Windows.Forms.NotifyIcon
         {
             Text = "Codex 小助手 · 等待 Codex",
@@ -71,18 +76,26 @@ public partial class CompanionWindow : Window, IAsyncDisposable
             {
                 var result = await Task.Run(() => (Anchor: CompanionDesktopTracker.Read(), Sessions: _activity.Read()));
                 if (_closing) return;
+                if (_anchor?.DesktopOpen != result.Anchor.DesktopOpen)
+                    _logger.Info(result.Anchor.DesktopOpen ? "Codex detected; showing companion." : "Waiting for Codex desktop.");
                 _anchor = result.Anchor; _sessions = result.Sessions;
+                _readFailed = false;
                 UpdateTasks(); Render();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+                if (!_readFailed) _logger.Info($"Desktop monitor will retry: {ex.GetType().Name}");
+                _readFailed = true;
             }
             finally { _busy = false; }
         }
         if (_anchor is null) return;
-        if (!_anchor.DesktopOpen || _hidden) { Hide(); return; }
+        if (!_anchor.DesktopOpen || _hidden) { SetExpanded(false); Hide(); return; }
         if (!IsVisible) Show();
         if (!_refreshing && DateTime.UtcNow - _lastQuota > TimeSpan.FromSeconds(60)) _ = RefreshQuotaAsync();
         var cursor = CompanionDesktopTracker.CursorPosition();
         var overPet = _anchor.PetOpen && cursor.X >= _anchor.X - 8 && cursor.X <= _anchor.X + _anchor.Width + 8 && cursor.Y >= _anchor.Y - 8 && cursor.Y <= _anchor.Y + _anchor.Height + 8;
-        if (overPet || IsMouseOver || Tasks.IsDropDownOpen) _lastHover = DateTime.UtcNow;
+        if (overPet || IsMouseOver || Details.IsMouseOver || Tasks.IsDropDownOpen) _lastHover = DateTime.UtcNow;
         SetExpanded(_pinned || DateTime.UtcNow - _lastHover < TimeSpan.FromMilliseconds(650));
         Position();
     }
@@ -106,7 +119,8 @@ public partial class CompanionWindow : Window, IAsyncDisposable
         var stale = _quotaError is not null || (_snapshot is not null && DateTimeOffset.Now - _snapshot.FetchedAt > TimeSpan.FromMinutes(2));
         BadgeLabel.Text = stale ? "5h 上次" : "5h 剩余";
         BadgeValue.Text = expired ? "待刷新" : five is null ? "—" : $"{five.RemainingPercent:0}%";
-        BadgeValue.FontSize = expired ? 12 : 20;
+        BadgeValue.FontSize = expired ? 12 : 18;
+        DetailValue.Text = BadgeValue.Text;
         QuotaBar.Value = expired ? 0 : five?.RemainingPercent ?? 0;
         ResetText.Text = five is null ? "五小时窗口暂不可用" : expired ? "已到重置时间 · 等待服务器确认" : "距离重置 " + Remaining(five.ResetsAt);
         WeekText.Text = week is null ? "周额度暂不可用" : $"本周剩余 {week.RemainingPercent:0}%   ·   {week.ResetsAt?.ToLocalTime():M/d HH:mm} 重置";
@@ -128,7 +142,9 @@ public partial class CompanionWindow : Window, IAsyncDisposable
         }
         SourceText.Text = _snapshot is null ? "额度尚未同步" : $"额度更新于 {_snapshot.FetchedAt.ToLocalTime():HH:mm:ss} · 每分钟刷新";
         ErrorText.Text = _quotaError ?? _activity.Error ?? (_anchor?.PetOpen == false ? "宠物未开启 · 暂时显示为独立卡片" : "");
-        Dot.Fill = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(_quotaError is not null || expired ? "#F4C88C" : "#74DAC3"));
+        Dot.Fill = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(_quotaError is not null || expired ? "#B8864C" : "#69816A"));
+        ProgressText.Visibility = string.IsNullOrWhiteSpace(ProgressText.Text) ? Visibility.Collapsed : Visibility.Visible;
+        ErrorText.Visibility = string.IsNullOrWhiteSpace(ErrorText.Text) ? Visibility.Collapsed : Visibility.Visible;
         _tray.Text = $"Codex 小助手 · 5h {BadgeValue.Text}";
     }
 
@@ -151,11 +167,10 @@ public partial class CompanionWindow : Window, IAsyncDisposable
 
     private void SetExpanded(bool expanded)
     {
+        expanded = expanded && IsVisible;
         if (_expanded == expanded) return;
         _expanded = expanded;
-        Width = expanded ? 306 : 166;
-        Details.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
-        UpdateLayout();
+        DetailsPopup.IsOpen = expanded && IsVisible;
     }
 
     private void Position()
@@ -163,12 +178,15 @@ public partial class CompanionWindow : Window, IAsyncDisposable
         if (_anchor is null) return;
         var dpi = VisualTreeHelper.GetDpi(this);
         var width = ActualWidth * dpi.DpiScaleX; var height = ActualHeight * dpi.DpiScaleY;
-        // Keep the card to the left of the pet, leaving official quick-chat controls usable.
-        var left = _anchor.PetOpen ? _anchor.X - width - 12 * dpi.DpiScaleX : _anchor.X;
-        var top = _anchor.PetOpen ? _anchor.Y + Math.Min(_anchor.Height / 2, 32 * dpi.DpiScaleY) : _anchor.Y;
-        left = Math.Clamp(left, _anchor.ScreenX + 8, Math.Max(_anchor.ScreenX + 8, _anchor.ScreenX + _anchor.ScreenWidth - width - 8));
-        top = Math.Clamp(top, _anchor.ScreenY + 8, Math.Max(_anchor.ScreenY + 8, _anchor.ScreenY + _anchor.ScreenHeight - height - 8));
+        var (left, top) = CompanionDesktopTracker.BadgePosition(_anchor, width, height, dpi.DpiScaleX, dpi.DpiScaleY);
+        var moved = Left != left / dpi.DpiScaleX || Top != top / dpi.DpiScaleY;
         Left = left / dpi.DpiScaleX; Top = top / dpi.DpiScaleY;
+        if (moved && DetailsPopup.IsOpen)
+        {
+            // WPF popups use a separate HWND; refresh placement when their owner moves.
+            DetailsPopup.HorizontalOffset += 1;
+            DetailsPopup.HorizontalOffset -= 1;
+        }
     }
 
     private void TogglePin()
@@ -177,7 +195,7 @@ public partial class CompanionWindow : Window, IAsyncDisposable
         PinButton.Content = _pinned ? "取消固定" : "固定展开";
         SetExpanded(_pinned); Position();
     }
-    private void BadgeClick(object sender, MouseButtonEventArgs e) => TogglePin();
+    private void BadgeClick(object sender, RoutedEventArgs e) => TogglePin();
     private void PinClick(object sender, RoutedEventArgs e) => TogglePin();
     private async void RefreshClick(object sender, RoutedEventArgs e) => await RefreshQuotaAsync();
     private void TaskChanged(object sender, SelectionChangedEventArgs e)
@@ -189,7 +207,7 @@ public partial class CompanionWindow : Window, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         if (_closing) return;
-        _closing = true; _timer.Stop(); _tray.Dispose();
+        _closing = true; DetailsPopup.IsOpen = false; _timer.Stop(); _tray.Dispose();
         while (_refreshing) await Task.Delay(50);
         await _usage.DisposeAsync();
         GC.SuppressFinalize(this);

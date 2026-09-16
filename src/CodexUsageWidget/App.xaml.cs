@@ -47,17 +47,19 @@ public partial class App : System.Windows.Application, IDisposable
         _logger = new FileLogger(AppPaths.LogDirectory);
         _exceptionHandler = new GlobalExceptionHandler(this, _logger);
 
-        if (!e.Args.Contains("--classic", StringComparer.OrdinalIgnoreCase))
-        {
-            var companion = new CompanionWindow();
-            MainWindow = companion;
-            companion.Start();
-            return;
-        }
-
         CodexActivityMonitor? activityMonitor = null;
         try
         {
+            if (!e.Args.Contains("--classic", StringComparer.OrdinalIgnoreCase))
+            {
+                var mode = e.Args.Contains("--startup", StringComparer.OrdinalIgnoreCase) ? "Windows startup" : "manual";
+                _logger.Info($"Companion started ({mode}); version {typeof(App).Assembly.GetName().Version}.");
+                var companion = new CompanionWindow(_logger);
+                MainWindow = companion;
+                companion.Start();
+                return;
+            }
+
             var appServerSession = new CodexAppServerSession();
             var codexUsageProvider = new CodexUsageProvider(appServerSession);
             IUsageProvider usageProvider = codexUsageProvider;

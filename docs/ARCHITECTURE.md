@@ -1,3 +1,10 @@
+## Companion 0.1.1
+
+- CompanionWindow 的固定尺寸额度条与详情 Popup 分离，避免展开时移动额度入口；Popup 保留悬停、固定和任务选择交互。
+- CompanionDesktopTracker.BadgePosition 负责边缘避让，左侧空间不足时放到宠物右侧。
+- scripts/install.ps1 随原 publish.ps1 流程打包，安装到用户本地 Programs 下的版本目录，只注册本工具的 HKCU Run 项，不修改 Codex。
+- App 记录启动方式和版本，监视器记录桌面状态变化；短暂读取错误记录错误类型并在下次轮询重试。
+
 # Architecture
 
 ## Companion 0.1.0 extension
