@@ -1,0 +1,661 @@
+<Window x:Class="CodexUsageWidget.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:localization="clr-namespace:CodexUsageWidget.Views.Localization"
+        Title="{localization:Loc Common_Settings}"
+        Width="468"
+        Height="700"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        Style="{StaticResource DialogWindow}">
+    <Window.Resources>
+        <Style x:Key="SettingsOptionCard" TargetType="RadioButton">
+            <Setter Property="Height" Value="64" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="Padding" Value="14,0" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="Background" Value="{DynamicResource CardBackground}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Card"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="9">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="22" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid Width="18"
+                                      Height="18"
+                                      HorizontalAlignment="Left"
+                                      VerticalAlignment="Center">
+                                    <Ellipse Stroke="{DynamicResource IconForegroundBrush}"
+                                             StrokeThickness="1.4" />
+                                    <Ellipse x:Name="SelectedDot"
+                                             Width="8"
+                                             Height="8"
+                                             Fill="{DynamicResource AccentPrimaryBrush}"
+                                             Visibility="Collapsed" />
+                                </Grid>
+                                <ContentPresenter Grid.Column="1"
+                                                  Margin="8,0,0,0"
+                                                  VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Card"
+                                        Property="BorderBrush"
+                                        Value="{DynamicResource AccentPrimaryBorderBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Card"
+                                        Property="BorderBrush"
+                                        Value="{DynamicResource AccentPrimaryBrush}" />
+                                <Setter TargetName="SelectedDot" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Card"
+                                        Property="BorderBrush"
+                                        Value="{DynamicResource AccentPrimaryBorderBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Card" Property="Opacity" Value="0.48" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SettingsToggleCard" TargetType="CheckBox">
+            <Setter Property="Height" Value="64" />
+            <Setter Property="Padding" Value="14,0" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="Background" Value="{DynamicResource CardBackground}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Border x:Name="Card"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="9">
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CheckStates">
+                                    <VisualStateGroup.Transitions>
+                                        <VisualTransition GeneratedDuration="0:0:0.16">
+                                            <VisualTransition.GeneratedEasingFunction>
+                                                <CubicEase EasingMode="EaseOut" />
+                                            </VisualTransition.GeneratedEasingFunction>
+                                        </VisualTransition>
+                                    </VisualStateGroup.Transitions>
+                                    <VisualState x:Name="Unchecked">
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="ToggleThumb"
+                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                                             To="0"
+                                                             Duration="0" />
+                                            <DoubleAnimation Storyboard.TargetName="ToggleTrackAccent"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0"
+                                                             Duration="0" />
+                                            <DoubleAnimation Storyboard.TargetName="ToggleThumbSelectedFill"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0"
+                                                             Duration="0" />
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Checked">
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="ToggleThumb"
+                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                                             To="18"
+                                                             Duration="0" />
+                                            <DoubleAnimation Storyboard.TargetName="ToggleTrackAccent"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="1"
+                                                             Duration="0" />
+                                            <DoubleAnimation Storyboard.TargetName="ToggleThumbSelectedFill"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="1"
+                                                             Duration="0" />
+                                        </Storyboard>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ContentPresenter VerticalAlignment="Center" />
+                                <Grid Grid.Column="1"
+                                      Width="40"
+                                      Height="22"
+                                      VerticalAlignment="Center">
+                                    <Border Background="{DynamicResource ControlBackgroundBrush}"
+                                            BorderBrush="{DynamicResource ControlBorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="11" />
+                                    <Border x:Name="ToggleTrackAccent"
+                                            Background="{DynamicResource AccentPrimaryBrush}"
+                                            BorderBrush="{DynamicResource AccentPrimaryBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="11"
+                                            Opacity="0" />
+                                    <Grid x:Name="ToggleThumb"
+                                          Width="16"
+                                          Height="16"
+                                          Margin="3"
+                                          HorizontalAlignment="Left">
+                                        <Grid.RenderTransform>
+                                            <TranslateTransform />
+                                        </Grid.RenderTransform>
+                                        <Ellipse Fill="{DynamicResource TextSecondary}" />
+                                        <Ellipse x:Name="ToggleThumbSelectedFill"
+                                                 Fill="#FFFFFF"
+                                                 Opacity="0" />
+                                    </Grid>
+                                </Grid>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Card"
+                                        Property="BorderBrush"
+                                        Value="{DynamicResource AccentPrimaryBorderBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Card"
+                                        Property="BorderBrush"
+                                        Value="{DynamicResource AccentPrimaryBorderBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AccentSwatchOption" TargetType="RadioButton">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Margin" Value="0,0,5,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Grid>
+                            <Ellipse x:Name="SelectionRing"
+                                     Fill="Transparent"
+                                     Stroke="Transparent"
+                                     StrokeThickness="1.5" />
+                            <Ellipse Width="16"
+                                     Height="16"
+                                     Fill="{TemplateBinding Background}" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Opacity" Value="0.82" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="SelectionRing"
+                                        Property="Stroke"
+                                        Value="{DynamicResource TextPrimary}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="SelectionRing"
+                                        Property="Stroke"
+                                        Value="{DynamicResource TextPrimary}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border Style="{StaticResource DialogSurface}">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="24"
+                              ShadowDepth="5"
+                              Opacity="0.34"
+                              Color="#000000" />
+        </Border.Effect>
+        <Grid Margin="22">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid MouseLeftButtonDown="Header_OnMouseLeftButtonDown">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="{localization:Loc Common_Settings}"
+                               Style="{StaticResource DialogTitle}" />
+                    <TextBlock Text="{localization:Loc Settings_Description}"
+                               Margin="0,3,0,0"
+                               Style="{StaticResource SupportingText}" />
+                </StackPanel>
+                <Button Grid.Column="1"
+                        ToolTip="{localization:Loc Common_Close}"
+                        IsCancel="True"
+                        Style="{StaticResource DialogCloseButton}">
+                    <Path Style="{StaticResource CloseGlyph}" />
+                </Button>
+            </Grid>
+
+            <ScrollViewer Grid.Row="1"
+                          Margin="0,22,0,0"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          Style="{StaticResource SlimScrollViewer}">
+              <StackPanel Margin="0,0,5,0">
+                <StackPanel>
+                    <TextBlock Text="{localization:Loc Settings_SectionGeneral}" Style="{StaticResource SectionTitle}" />
+                    <CheckBox x:Name="StartWithWindowsOption"
+                              Margin="0,14,0,0"
+                              AutomationProperties.Name="{localization:Loc Settings_StartWithWindows}"
+                              Checked="StartWithWindowsOption_OnChanged"
+                              Unchecked="StartWithWindowsOption_OnChanged"
+                              Style="{StaticResource SettingsToggleCard}">
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{localization:Loc Settings_StartWithWindows}" FontWeight="SemiBold" />
+                            <TextBlock Text="{localization:Loc Settings_StartWithWindowsDescription}"
+                                       Margin="0,3,0,0"
+                                       Style="{StaticResource SupportingText}" />
+                        </StackPanel>
+                    </CheckBox>
+                </StackPanel>
+
+                <StackPanel Margin="0,18,0,14">
+                    <TextBlock Text="{localization:Loc Settings_Language_Title}"
+                               FontSize="15"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimary}" />
+                    <TextBlock Text="{localization:Loc Settings_Language_Description}"
+                               Margin="0,3,0,0"
+                               TextWrapping="Wrap"
+                               Style="{StaticResource SupportingText}" />
+                </StackPanel>
+
+                <StackPanel>
+                    <RadioButton x:Name="SystemLanguageOption"
+                                 GroupName="Language"
+                                 AutomationProperties.Name="{localization:Loc Settings_Language_SystemAutomation}"
+                                 Checked="LanguageOption_OnChecked"
+                                 Style="{StaticResource SettingsOptionCard}">
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{localization:Loc Settings_Language_System}" FontWeight="SemiBold" />
+                            <TextBlock Text="{localization:Loc Settings_Language_SystemDescription}"
+                                       Margin="0,3,0,0"
+                                       Style="{StaticResource SupportingText}" />
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="EnglishLanguageOption"
+                                 GroupName="Language"
+                                 AutomationProperties.Name="{localization:Loc Settings_Language_EnglishAutomation}"
+                                 Checked="LanguageOption_OnChecked"
+                                 Style="{StaticResource SettingsOptionCard}">
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{localization:Loc Settings_Language_English}" FontWeight="SemiBold" />
+                            <TextBlock Text="{localization:Loc Settings_Language_EnglishDescription}"
+                                       Margin="0,3,0,0"
+                                       Style="{StaticResource SupportingText}" />
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="SimplifiedChineseLanguageOption"
+                                 GroupName="Language"
+                                 AutomationProperties.Name="{localization:Loc Settings_Language_ChineseAutomation}"
+                                 Checked="LanguageOption_OnChecked"
+                                 Style="{StaticResource SettingsOptionCard}">
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{localization:Loc Settings_Language_Chinese}" FontWeight="SemiBold" />
+                            <TextBlock Text="{localization:Loc Settings_Language_ChineseDescription}"
+                                       Margin="0,3,0,0"
+                                       Style="{StaticResource SupportingText}" />
+                        </StackPanel>
+                    </RadioButton>
+                </StackPanel>
+
+                <StackPanel Margin="0,18,0,14">
+                    <TextBlock Text="{localization:Loc Settings_TimeFormat_Title}"
+                               FontSize="15"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimary}" />
+                    <TextBlock Text="{localization:Loc Settings_TimeFormat_Description}"
+                               Margin="0,3,0,0"
+                               TextWrapping="Wrap"
+                               Style="{StaticResource SupportingText}" />
+                </StackPanel>
+
+                <StackPanel>
+                    <RadioButton x:Name="AutomaticTimeOption"
+                                 GroupName="TimeFormat"
+                                 AutomationProperties.Name="{localization:Loc Settings_TimeFormat_AutomaticAutomation}"
+                                 Checked="TimeFormatOption_OnChecked"
+                                 Style="{StaticResource SettingsOptionCard}">
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{localization:Loc Settings_TimeFormat_Automatic}" FontWeight="SemiBold" />
+                            <TextBlock Text="{localization:Loc Settings_TimeFormat_AutomaticDescription}"
+                                       Margin="0,3,0,0"
+                                       Style="{StaticResource SupportingText}" />
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="TwentyFourHourTimeOption"
+                                 GroupName="TimeFormat"
+                                 AutomationProperties.Name="{localization:Loc Settings_TimeFormat_TwentyFourHourAutomation}"
+                                 Checked="TimeFormatOption_OnChecked"
+                                 Style="{StaticResource SettingsOptionCard}">
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{localization:Loc Settings_TimeFormat_TwentyFourHour}" FontWeight="SemiBold" />
+                            <TextBlock Text="{localization:Loc Settings_TimeFormat_TwentyFourHourDescription}"
+                                       Margin="0,3,0,0"
+                                       Style="{StaticResource SupportingText}" />
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="TwelveHourTimeOption"
+                                 GroupName="TimeFormat"
+                                 AutomationProperties.Name="{localization:Loc Settings_TimeFormat_TwelveHourAutomation}"
+                                 Checked="TimeFormatOption_OnChecked"
+                                 Style="{StaticResource SettingsOptionCard}">
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{localization:Loc Settings_TimeFormat_TwelveHour}" FontWeight="SemiBold" />
+                            <TextBlock Text="{localization:Loc Settings_TimeFormat_TwelveHourDescription}"
+                                       Margin="0,3,0,0"
+                                       Style="{StaticResource SupportingText}" />
+                        </StackPanel>
+                    </RadioButton>
+                </StackPanel>
+
+                <StackPanel Margin="0,18,0,14">
+                    <TextBlock Text="{localization:Loc Settings_Theme_Title}"
+                               FontSize="15"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimary}" />
+                    <TextBlock Text="{localization:Loc Settings_Theme_Description}"
+                               Margin="0,3,0,0"
+                               Style="{StaticResource SupportingText}" />
+                </StackPanel>
+
+              <StackPanel>
+                <RadioButton x:Name="SystemThemeOption"
+                             GroupName="Theme"
+                             AutomationProperties.Name="{localization:Loc Settings_Theme_SystemAutomation}"
+                             Checked="ThemeOption_OnChecked"
+                             Style="{StaticResource SettingsOptionCard}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{localization:Loc Settings_Theme_System}" FontWeight="SemiBold" />
+                            <TextBlock Text="{localization:Loc Settings_Theme_SystemDescription}"
+                                       Margin="0,3,0,0"
+                                       Style="{StaticResource SupportingText}" />
+                        </StackPanel>
+                        <Border Grid.Column="1"
+                                Width="46"
+                                Height="30"
+                                BorderBrush="#85878C"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                ClipToBounds="True">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition />
+                                    <ColumnDefinition />
+                                </Grid.ColumnDefinitions>
+                                <Border Background="#F7F7F8" />
+                                <Border Grid.Column="1" Background="#252525" />
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </RadioButton>
+
+                <RadioButton x:Name="LightThemeOption"
+                             GroupName="Theme"
+                             AutomationProperties.Name="{localization:Loc Settings_Theme_LightAutomation}"
+                             Checked="ThemeOption_OnChecked"
+                             Style="{StaticResource SettingsOptionCard}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{localization:Loc Settings_Theme_Light}" FontWeight="SemiBold" />
+                            <TextBlock Text="{localization:Loc Settings_Theme_LightDescription}"
+                                       Margin="0,3,0,0"
+                                       Style="{StaticResource SupportingText}" />
+                        </StackPanel>
+                        <Border Grid.Column="1"
+                                Width="46"
+                                Height="30"
+                                Background="#F7F7F8"
+                                BorderBrush="#C9CBD0"
+                                BorderThickness="1"
+                                CornerRadius="6">
+                            <Border Width="24"
+                                    Height="4"
+                                    Background="{DynamicResource AccentDataBrush}"
+                                    CornerRadius="2" />
+                        </Border>
+                    </Grid>
+                </RadioButton>
+
+                <RadioButton x:Name="DarkThemeOption"
+                             GroupName="Theme"
+                             AutomationProperties.Name="{localization:Loc Settings_Theme_DarkAutomation}"
+                             Checked="ThemeOption_OnChecked"
+                             Style="{StaticResource SettingsOptionCard}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{localization:Loc Settings_Theme_Dark}" FontWeight="SemiBold" />
+                            <TextBlock Text="{localization:Loc Settings_Theme_DarkDescription}"
+                                       Margin="0,3,0,0"
+                                       Style="{StaticResource SupportingText}" />
+                        </StackPanel>
+                        <Border Grid.Column="1"
+                                Width="46"
+                                Height="30"
+                                Background="#252525"
+                                BorderBrush="#4B4B4B"
+                                BorderThickness="1"
+                                CornerRadius="6">
+                            <Border Width="24"
+                                    Height="4"
+                                    Background="{DynamicResource AccentDataBrush}"
+                                    CornerRadius="2" />
+                        </Border>
+                    </Grid>
+                </RadioButton>
+
+                <Grid Margin="12,4,8,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock VerticalAlignment="Center"
+                               Text="{localization:Loc Settings_Accent_Title}"
+                               Style="{StaticResource SupportingText}" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <RadioButton x:Name="BlueAccentOption"
+                                     GroupName="AccentPalette"
+                                     Background="#3B78D8"
+                                     ToolTip="{localization:Loc Settings_Accent_Blue}"
+                                     AutomationProperties.Name="{localization:Loc Settings_Accent_BlueAutomation}"
+                                     Checked="AccentPaletteOption_OnChecked"
+                                     Style="{StaticResource AccentSwatchOption}" />
+                        <RadioButton x:Name="VioletAccentOption"
+                                     GroupName="AccentPalette"
+                                     Background="#7C3AED"
+                                     ToolTip="{localization:Loc Settings_Accent_Violet}"
+                                     AutomationProperties.Name="{localization:Loc Settings_Accent_VioletAutomation}"
+                                     Checked="AccentPaletteOption_OnChecked"
+                                     Style="{StaticResource AccentSwatchOption}" />
+                        <RadioButton x:Name="TealAccentOption"
+                                     GroupName="AccentPalette"
+                                     Background="#0F8F83"
+                                     ToolTip="{localization:Loc Settings_Accent_Teal}"
+                                     AutomationProperties.Name="{localization:Loc Settings_Accent_TealAutomation}"
+                                     Checked="AccentPaletteOption_OnChecked"
+                                     Style="{StaticResource AccentSwatchOption}" />
+                        <RadioButton x:Name="EmeraldAccentOption"
+                                     GroupName="AccentPalette"
+                                     Background="#1D9148"
+                                     ToolTip="{localization:Loc Settings_Accent_Emerald}"
+                                     AutomationProperties.Name="{localization:Loc Settings_Accent_EmeraldAutomation}"
+                                     Checked="AccentPaletteOption_OnChecked"
+                                     Style="{StaticResource AccentSwatchOption}" />
+                        <RadioButton x:Name="PinkAccentOption"
+                                     GroupName="AccentPalette"
+                                     Background="#C72F75"
+                                     ToolTip="{localization:Loc Settings_Accent_Pink}"
+                                     AutomationProperties.Name="{localization:Loc Settings_Accent_PinkAutomation}"
+                                     Checked="AccentPaletteOption_OnChecked"
+                                     Style="{StaticResource AccentSwatchOption}" />
+                    </StackPanel>
+                </Grid>
+              </StackPanel>
+
+              <StackPanel Margin="0,10,0,14">
+                  <TextBlock Text="{localization:Loc Settings_Layout_Title}"
+                             FontSize="15"
+                             FontWeight="SemiBold"
+                             Foreground="{DynamicResource TextPrimary}" />
+                  <TextBlock Text="{localization:Loc Settings_Layout_Description}"
+                             Margin="0,3,0,0"
+                             Style="{StaticResource SupportingText}" />
+              </StackPanel>
+
+              <Grid>
+                  <Grid.ColumnDefinitions>
+                      <ColumnDefinition />
+                      <ColumnDefinition />
+                  </Grid.ColumnDefinitions>
+                  <RadioButton x:Name="CompactLayoutOption"
+                               GroupName="WidgetLayout"
+                               Margin="0,0,4,8"
+                               AutomationProperties.Name="{localization:Loc Settings_Layout_CompactAutomation}"
+                               Checked="WidgetLayoutOption_OnChecked"
+                               Style="{StaticResource SettingsOptionCard}">
+                      <StackPanel VerticalAlignment="Center">
+                          <TextBlock Text="{localization:Loc Settings_Layout_Compact}" FontWeight="SemiBold" />
+                          <TextBlock Text="{localization:Loc Settings_Layout_CompactDescription}"
+                                     Margin="0,3,0,0"
+                                     Style="{StaticResource SupportingText}" />
+                      </StackPanel>
+                  </RadioButton>
+                  <RadioButton x:Name="DetailedLayoutOption"
+                               Grid.Column="1"
+                               GroupName="WidgetLayout"
+                               Margin="4,0,0,8"
+                               AutomationProperties.Name="{localization:Loc Settings_Layout_DetailedAutomation}"
+                               Checked="WidgetLayoutOption_OnChecked"
+                               Style="{StaticResource SettingsOptionCard}">
+                      <StackPanel VerticalAlignment="Center">
+                          <TextBlock Text="{localization:Loc Settings_Layout_Detailed}" FontWeight="SemiBold" />
+                          <TextBlock Text="{localization:Loc Settings_Layout_DetailedDescription}"
+                                     Margin="0,3,0,0"
+                                     Style="{StaticResource SupportingText}" />
+                      </StackPanel>
+                  </RadioButton>
+              </Grid>
+
+              <Border Height="1"
+                      Margin="0,2,0,10"
+                      Background="{DynamicResource DividerBrush}" />
+
+              <StackPanel Margin="0,0,0,14">
+                  <TextBlock Text="{localization:Loc Settings_SectionUsage}" Style="{StaticResource SectionTitle}" />
+                  <TextBlock Text="{localization:Loc Settings_DisplayedLimit_Title}"
+                             Margin="0,8,0,0"
+                             FontSize="15"
+                             FontWeight="SemiBold"
+                             Foreground="{DynamicResource TextPrimary}" />
+                  <TextBlock Text="{localization:Loc Settings_DisplayedLimit_Description}"
+                             Margin="0,3,0,0"
+                             TextWrapping="Wrap"
+                             Style="{StaticResource SupportingText}" />
+              </StackPanel>
+
+              <StackPanel>
+                  <RadioButton x:Name="FiveHourLimitOption"
+                               GroupName="DisplayedLimit"
+                               AutomationProperties.Name="{localization:Loc Settings_DisplayedLimit_FiveHourAutomation}"
+                               Checked="DisplayedLimitOption_OnChecked"
+                               Style="{StaticResource SettingsOptionCard}"
+                               ToolTip="{localization:Loc Settings_DisplayedLimit_FiveHourUnavailable}">
+                      <StackPanel VerticalAlignment="Center">
+                          <TextBlock Text="{localization:Loc Usage_FiveHourLimit}" FontWeight="SemiBold" />
+                          <TextBlock Text="{localization:Loc Settings_DisplayedLimit_FiveHourDescription}"
+                                     Margin="0,3,0,0"
+                                     Style="{StaticResource SupportingText}" />
+                      </StackPanel>
+                  </RadioButton>
+
+                  <RadioButton x:Name="WeeklyLimitOption"
+                               GroupName="DisplayedLimit"
+                               AutomationProperties.Name="{localization:Loc Settings_DisplayedLimit_WeeklyAutomation}"
+                               Checked="DisplayedLimitOption_OnChecked"
+                               Style="{StaticResource SettingsOptionCard}">
+                      <StackPanel VerticalAlignment="Center">
+                          <TextBlock Text="{localization:Loc Usage_WeeklyLimit}" FontWeight="SemiBold" />
+                          <TextBlock Text="{localization:Loc Settings_DisplayedLimit_WeeklyDescription}"
+                                     Margin="0,3,0,0"
+                                     Style="{StaticResource SupportingText}" />
+                      </StackPanel>
+                  </RadioButton>
+
+                  <RadioButton x:Name="MostConstrainedLimitOption"
+                               GroupName="DisplayedLimit"
+                               AutomationProperties.Name="{localization:Loc Settings_DisplayedLimit_MostConstrainedAutomation}"
+                               Checked="DisplayedLimitOption_OnChecked"
+                               Style="{StaticResource SettingsOptionCard}">
+                      <StackPanel VerticalAlignment="Center">
+                          <TextBlock Text="{localization:Loc Settings_DisplayedLimit_MostConstrained}" FontWeight="SemiBold" />
+                          <TextBlock Text="{localization:Loc Settings_DisplayedLimit_MostConstrainedDescription}"
+                                     Margin="0,3,0,0"
+                                     Style="{StaticResource SupportingText}" />
+                      </StackPanel>
+                  </RadioButton>
+              </StackPanel>
+
+              <Border Height="1"
+                      Margin="0,2,0,10"
+                      Background="{DynamicResource DividerBrush}" />
+
+              <StackPanel x:Name="ActivityDotsSection">
+                  <TextBlock Text="{localization:Loc Settings_SectionFeatures}" Style="{StaticResource SectionTitle}" />
+                  <ContentControl x:Name="ActivityDotsHost" Margin="0,14,0,0" />
+              </StackPanel>
+             </StackPanel>
+            </ScrollViewer>
+
+        </Grid>
+    </Border>
+</Window>

@@ -1,0 +1,317 @@
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
+using System.Windows.Interop;
+using CodexUsageWidget.Application;
+using CodexUsageWidget.Infrastructure.Settings;
+using CodexUsageWidget.Infrastructure.Windows;
+using CodexUsageWidget.Localization;
+
+namespace CodexUsageWidget.Views;
+
+[System.Diagnostics.CodeAnalysis.SuppressMessage(
+    "Design",
+    "CA1001:Types that own disposable fields should be disposable",
+    Justification = "WPF owns the window lifecycle; the Closed handler releases the native hooks.")]
+public partial class TaskbarLabelWindow : Window
+{
+    private readonly System.Windows.Threading.DispatcherTimer _positionTimer;
+    private readonly WindowChangeWatcher _windowChangeWatcher;
+    private ExternalMouseDownWatcher? _contextMenuDismissWatcher;
+    private IntPtr _windowHandle;
+    private string? _limitLabel;
+    private double? _remainingPercent;
+    private DateTimeOffset? _resetsAt;
+    private TimeFormatPreference _timeFormatPreference;
+    private bool _labelRequested;
+    private bool _isTaskActive;
+    private bool _isClosed;
+    private bool _resetMenuPlacementOnClose;
+    private int _visibilityUpdateQueued;
+
+    public TaskbarLabelWindow()
+    {
+        InitializeComponent();
+        Strings.Current.PropertyChanged += StringsOnPropertyChanged;
+
+#if DEBUG || ACTIVITY_PREVIEW
+        ActivityPreviewMenuItem.Visibility = Visibility.Visible;
+#endif
+
+        SourceInitialized += (_, _) =>
+        {
+            _windowHandle = new WindowInteropHelper(this).Handle;
+            TaskbarWindowInterop.ConfigureAsTaskbarOverlay(_windowHandle);
+            Reposition();
+        };
+
+        _positionTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(2)
+        };
+        _positionTimer.Tick += (_, _) => UpdateVisibilityAndPosition();
+
+        _windowChangeWatcher = new WindowChangeWatcher(QueueVisibilityUpdate);
+        Closed += (_, _) =>
+        {
+            _isClosed = true;
+            _labelRequested = false;
+            _positionTimer.Stop();
+            _contextMenuDismissWatcher?.Dispose();
+            _contextMenuDismissWatcher = null;
+            _windowChangeWatcher.Dispose();
+            Strings.Current.PropertyChanged -= StringsOnPropertyChanged;
+        };
+    }
+
+    public event EventHandler? OpenRequested;
+
+    public event EventHandler? ToggleRequested;
+
+    public event EventHandler? RefreshRequested;
+
+    public event EventHandler? SettingsRequested;
+
+    public event EventHandler? ActivityPreviewChanged;
+
+    public event EventHandler? DesktopModeRequested;
+
+    public event EventHandler? UpdateCheckRequested;
+
+    public event EventHandler? ExitRequested;
+
+    public bool IsPointerOver => IsMouseOver;
+
+    public bool IsActivityPreviewEnabled => ActivityPreviewMenuItem.IsChecked;
+
+    public void ResetActivityPreview() => ActivityPreviewMenuItem.IsChecked = false;
+
+    public void OpenMenu(FrameworkElement placementTarget)
+    {
+        ArgumentNullException.ThrowIfNull(placementTarget);
+
+        if (_isClosed)
+        {
+            return;
+        }
+
+        if (TaskbarMenu.IsOpen)
+        {
+            TaskbarMenu.IsOpen = false;
+        }
+
+        _resetMenuPlacementOnClose = true;
+        TaskbarMenu.PlacementTarget = placementTarget;
+        TaskbarMenu.Placement = PlacementMode.Bottom;
+        TaskbarMenu.HorizontalOffset = placementTarget.ActualWidth - TaskbarMenu.MinWidth;
+        TaskbarMenu.VerticalOffset = 4;
+        TaskbarMenu.IsOpen = true;
+    }
+
+    public void ShowLabel()
+    {
+        _labelRequested = true;
+        new WindowInteropHelper(this).EnsureHandle();
+        _positionTimer.Start();
+        UpdateVisibilityAndPosition();
+    }
+
+    public void HideLabel()
+    {
+        _labelRequested = false;
+        _positionTimer.Stop();
+        if (!_isClosed)
+        {
+            Hide();
+        }
+    }
+
+    public void CloseLabel()
+    {
+        if (!_isClosed)
+        {
+            Close();
+        }
+    }
+
+    public void SetActivityState(bool isActive)
+    {
+        if (_isTaskActive == isActive)
+        {
+            return;
+        }
+
+        _isTaskActive = isActive;
+        ActivityDots.IsActive = isActive;
+    }
+
+    public void SetSystemTheme(EffectiveTheme theme)
+    {
+        var light = theme == EffectiveTheme.Light;
+        var primaryBrush = new System.Windows.Media.SolidColorBrush(
+            light
+                ? System.Windows.Media.Color.FromRgb(32, 33, 36)
+                : System.Windows.Media.Color.FromRgb(242, 242, 242));
+        Resources["TaskbarTextPrimaryBrush"] = primaryBrush;
+        ActivityDots.DotBrush = primaryBrush;
+        Resources["TaskbarTextSecondaryBrush"] = new System.Windows.Media.SolidColorBrush(
+            light
+                ? System.Windows.Media.Color.FromRgb(72, 73, 78)
+                : System.Windows.Media.Color.FromRgb(212, 212, 212));
+        Resources["TaskbarLabelHoverBrush"] = new System.Windows.Media.SolidColorBrush(
+            light
+                ? System.Windows.Media.Color.FromArgb(18, 0, 0, 0)
+                : System.Windows.Media.Color.FromArgb(24, 255, 255, 255));
+    }
+
+    public void SetTimeFormatPreference(TimeFormatPreference preference)
+    {
+        _timeFormatPreference = preference;
+        UpdateUsage(_limitLabel, _remainingPercent, _resetsAt);
+    }
+
+    public void UpdateUsage(
+        string? limitLabel,
+        double? remainingPercent,
+        DateTimeOffset? resetsAt)
+    {
+        _limitLabel = limitLabel;
+        _remainingPercent = remainingPercent;
+        _resetsAt = resetsAt;
+        if (remainingPercent is null)
+        {
+            UsageText.Text = "--%";
+            LabelSurface.ToolTip = Strings.Get("Taskbar_UsageUnavailable");
+            return;
+        }
+
+        var value = Math.Round(Math.Clamp(remainingPercent.Value, 0d, 100d));
+        UsageText.Text = $"{value:0}%";
+        var label = string.IsNullOrWhiteSpace(limitLabel)
+            ? "Codex"
+            : UsageLabelLocalizer.Localize(limitLabel);
+        LabelSurface.ToolTip = resetsAt is null
+            ? Strings.Format("Taskbar_Remaining", label, value)
+            : Strings.Format(
+                "Taskbar_RemainingWithReset",
+                label,
+                value,
+                TimeTextFormatter.FormatDayAndTime(
+                    resetsAt.Value,
+                    _timeFormatPreference));
+    }
+
+    private void StringsOnPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == "Item[]" && !_isClosed)
+        {
+            UpdateUsage(_limitLabel, _remainingPercent, _resetsAt);
+        }
+    }
+
+    private void Reposition()
+    {
+        if (_windowHandle != IntPtr.Zero)
+        {
+            TaskbarWindowInterop.PositionNextToNotificationArea(_windowHandle, Width, Height);
+        }
+    }
+
+    private void UpdateVisibilityAndPosition()
+    {
+        if (_isClosed || !_labelRequested || _windowHandle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        if (FullscreenWindowDetector.IsForegroundWindowFullscreenOnMonitor(_windowHandle))
+        {
+            if (IsVisible)
+            {
+                Hide();
+            }
+
+            return;
+        }
+
+        if (!IsVisible)
+        {
+            Reposition();
+            Show();
+            return;
+        }
+
+        Reposition();
+    }
+
+    private void QueueVisibilityUpdate()
+    {
+        if (Interlocked.Exchange(ref _visibilityUpdateQueued, 1) != 0)
+        {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(
+            () =>
+            {
+                Interlocked.Exchange(ref _visibilityUpdateQueued, 0);
+                UpdateVisibilityAndPosition();
+            },
+            System.Windows.Threading.DispatcherPriority.Send);
+    }
+
+    private void LabelSurface_OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e) =>
+        ToggleRequested?.Invoke(this, EventArgs.Empty);
+
+    private void OpenMenuItem_OnClick(object sender, RoutedEventArgs e) =>
+        OpenRequested?.Invoke(this, EventArgs.Empty);
+
+    private void RefreshMenuItem_OnClick(object sender, RoutedEventArgs e) =>
+        RefreshRequested?.Invoke(this, EventArgs.Empty);
+
+    private void SettingsMenuItem_OnClick(object sender, RoutedEventArgs e) =>
+        SettingsRequested?.Invoke(this, EventArgs.Empty);
+
+    private void ActivityPreviewMenuItem_OnClick(object sender, RoutedEventArgs e)
+        => ActivityPreviewChanged?.Invoke(this, EventArgs.Empty);
+
+    private void TaskbarMenu_OnOpened(object sender, RoutedEventArgs e)
+    {
+        _contextMenuDismissWatcher?.Dispose();
+        _contextMenuDismissWatcher = new ExternalMouseDownWatcher(() =>
+            Dispatcher.BeginInvoke(CloseTaskbarMenu));
+    }
+
+    private void TaskbarMenu_OnClosed(object sender, RoutedEventArgs e)
+    {
+        _contextMenuDismissWatcher?.Dispose();
+        _contextMenuDismissWatcher = null;
+
+        if (_resetMenuPlacementOnClose)
+        {
+            _resetMenuPlacementOnClose = false;
+            TaskbarMenu.ClearValue(System.Windows.Controls.ContextMenu.PlacementTargetProperty);
+            TaskbarMenu.ClearValue(System.Windows.Controls.ContextMenu.PlacementProperty);
+            TaskbarMenu.ClearValue(System.Windows.Controls.ContextMenu.HorizontalOffsetProperty);
+            TaskbarMenu.ClearValue(System.Windows.Controls.ContextMenu.VerticalOffsetProperty);
+        }
+    }
+
+    private void CloseTaskbarMenu()
+    {
+        if (TaskbarMenu.IsOpen)
+        {
+            TaskbarMenu.IsOpen = false;
+        }
+    }
+
+    private void DesktopModeMenuItem_OnClick(object sender, RoutedEventArgs e) =>
+        DesktopModeRequested?.Invoke(this, EventArgs.Empty);
+
+    private void CheckForUpdatesMenuItem_OnClick(object sender, RoutedEventArgs e) =>
+        UpdateCheckRequested?.Invoke(this, EventArgs.Empty);
+
+    private void ExitMenuItem_OnClick(object sender, RoutedEventArgs e) =>
+        ExitRequested?.Invoke(this, EventArgs.Empty);
+}
