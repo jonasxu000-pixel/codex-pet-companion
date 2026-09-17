@@ -46,7 +46,7 @@ foreach ($name in @('CodexPetCompanion.exe', 'LICENSE', 'README.md', 'install.cm
         Copy-Item -LiteralPath $source -Destination $target -Force
     }
 }
-# Task Scheduler provides logon/unlock triggers plus recovery if a launch was missed.
+# Subscribe to existing Windows Codex activation events; no resident watcher or timer.
 # InteractiveToken keeps the UI in this user's desktop without storing a password.
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 try { $userSid = $identity.User.Value } finally { $identity.Dispose() }
@@ -55,7 +55,7 @@ $scheduler = New-Object -ComObject Schedule.Service
 $scheduler.Connect()
 $folder = $scheduler.GetFolder('\')
 $definition = $scheduler.NewTask(0)
-$definition.RegistrationInfo.Description = 'Start the Codex companion at sign-in/unlock; recover missing companion once per minute while Codex is open.'
+$definition.RegistrationInfo.Description = 'Start only on Codex activation. No periodic polling or resident watcher.'
 $definition.Principal.UserId = $userSid
 $definition.Principal.LogonType = 3
 $definition.Principal.RunLevel = 0
@@ -65,16 +65,9 @@ $definition.Settings.DisallowStartIfOnBatteries = $false
 $definition.Settings.StopIfGoingOnBatteries = $false
 $definition.Settings.ExecutionTimeLimit = 'PT0S'
 $definition.Settings.MultipleInstances = 2
-$logon = $definition.Triggers.Create(9)
-$logon.UserId = $userSid
-$logon.Delay = 'PT5S'
-$unlock = $definition.Triggers.Create(11)
-$unlock.UserId = $userSid
-$unlock.StateChange = 8
-$unlock.Delay = 'PT3S'
-$recovery = $definition.Triggers.Create(1)
-$recovery.StartBoundary = (Get-Date).AddSeconds(10).ToString('yyyy-MM-ddTHH:mm:ss')
-$recovery.Repetition.Interval = 'PT1M'
+$activation = $definition.Triggers.Create(0)
+$activation.Delay = 'PT3S'
+$activation.Subscription = '<QueryList><Query Id="0" Path="Microsoft-Windows-TWinUI/Operational"><Select Path="Microsoft-Windows-TWinUI/Operational">*[System[EventID=1621]] and *[EventData[Data[@Name=''ApplicationId'']=''OpenAI.Codex_2p2nqsd0c76g0!App'']]</Select></Query><Query Id="1" Path="Microsoft-Windows-AppModel-Runtime/Admin"><Select Path="Microsoft-Windows-AppModel-Runtime/Admin">*[System[EventID=201]] and *[EventData[Data[@Name=''ApplicationName'']=''OpenAI.Codex_2p2nqsd0c76g0!App'']]</Select></Query></QueryList>'
 $action = $definition.Actions.Create(0)
 $action.Path = $targetExe
 $action.Arguments = '--recover'
@@ -92,4 +85,4 @@ if ($null -ne $startupKey) {
 $registered.Run($null) | Out-Null
 Write-Output "Installed: $targetExe"
 Write-Output "Scheduled startup registered and triggered: $taskName"
-Write-Output 'The companion starts while Codex is open; missed launches recover within about one minute.'
+Write-Output 'The companion starts on Codex activation only; closes with Codex or its pet.'

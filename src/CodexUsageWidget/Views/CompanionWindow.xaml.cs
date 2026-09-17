@@ -14,12 +14,14 @@ namespace CodexUsageWidget.Views;
 
 public partial class CompanionWindow : Window, IAsyncDisposable
 {
-    private readonly UsageMonitor _usage = new(new CodexUsageProvider(new CodexAppServerSession()), requestTimeout: TimeSpan.FromSeconds(20));
+    private readonly UsageMonitor _usage = new(new CompanionUsageProvider(), requestTimeout: TimeSpan.FromSeconds(20));
     private readonly CompanionActivityReader _activity = new(CompanionDesktopTracker.CodexHome);
-    private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
+    private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private readonly System.Windows.Forms.NotifyIcon _tray;
     private readonly IAppLogger _logger;
     private bool _readFailed;
+    private int _absentReads;
+    private readonly CancellationTokenSource _lifetime = new();
     private CompanionAnchor? _anchor;
     private UsageSnapshot? _snapshot;
     private IReadOnlyList<CompanionActivity> _sessions = [];
@@ -84,11 +86,24 @@ public partial class CompanionWindow : Window, IAsyncDisposable
             _busy = true; _lastRead = DateTime.UtcNow;
             try
             {
-                var result = await Task.Run(() => (Anchor: CompanionDesktopTracker.Read(), Sessions: _activity.Read()));
+                var readActivity = _expanded;
+                var result = await Task.Run(() =>
+                {
+                    var anchor = CompanionDesktopTracker.Read();
+                    return (Anchor: anchor, Sessions: readActivity && CompanionDesktopTracker.ShouldRun(anchor) ? _activity.Read() : _sessions);
+                });
                 if (_closing) return;
                 if (_anchor?.DesktopOpen != result.Anchor.DesktopOpen)
                     _logger.Info(result.Anchor.DesktopOpen ? "Codex detected; showing companion." : "Waiting for Codex desktop.");
-                _anchor = result.Anchor; _sessions = result.Sessions;
+                _anchor = result.Anchor;
+                _absentReads = CompanionDesktopTracker.ShouldRun(_anchor) ? 0 : _absentReads + 1;
+                if (_absentReads >= 3)
+                {
+                    _logger.Info("Codex or pet closed; exiting without a resident watcher.");
+                    Close();
+                    return;
+                }
+                _sessions = result.Sessions;
                 _readFailed = false;
                 UpdateTasks(); Render();
             }
@@ -100,7 +115,7 @@ public partial class CompanionWindow : Window, IAsyncDisposable
             finally { _busy = false; }
         }
         if (_anchor is null) return;
-        if (!_anchor.DesktopOpen || _hidden) { SetExpanded(false); Hide(); return; }
+        if (!CompanionDesktopTracker.ShouldRun(_anchor) || _hidden) { SetExpanded(false); Hide(); return; }
         if (!IsVisible) Show();
         if (!_refreshing && DateTime.UtcNow - _lastQuota > TimeSpan.FromSeconds(60)) _ = RefreshQuotaAsync();
         var cursor = CompanionDesktopTracker.CursorPosition();
@@ -171,7 +186,7 @@ public partial class CompanionWindow : Window, IAsyncDisposable
     {
         if (_refreshing || _closing || _anchor?.DesktopOpen != true) return;
         _refreshing = true; _lastQuota = DateTime.UtcNow; RefreshButton.IsEnabled = false;
-        try { await _usage.RefreshAsync(); }
+        try { await _usage.RefreshAsync(_lifetime.Token); }
         finally { _refreshing = false; if (!_closing) RefreshButton.IsEnabled = true; }
     }
 
@@ -218,8 +233,10 @@ public partial class CompanionWindow : Window, IAsyncDisposable
     {
         if (_closing) return;
         _closing = true; DetailsPopup.IsOpen = false; _timer.Stop(); _tray.Dispose();
+        await _lifetime.CancelAsync();
         while (_refreshing) await Task.Delay(50);
         await _usage.DisposeAsync();
+        _lifetime.Dispose();
         GC.SuppressFinalize(this);
     }
 }

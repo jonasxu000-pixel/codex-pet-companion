@@ -29,6 +29,9 @@ public sealed class CompanionActivityReader
     private readonly string _home;
     private readonly Dictionary<string, Cursor> _files = new(StringComparer.OrdinalIgnoreCase);
     private DateTime _lastDiscovery;
+    private DateTime _lastTitleWrite;
+    private long _lastTitleLength = -1;
+    private const int MaxTailBytes = 256 * 1024;
     public string? Error { get; private set; }
 
     public CompanionActivityReader(string home) => _home = home;
@@ -48,7 +51,11 @@ public sealed class CompanionActivityReader
                     .SelectMany(dir => Directory.EnumerateFiles(dir, "*.jsonl"))
                     .OrderByDescending(File.GetLastWriteTimeUtc).Take(24).ToArray();
                 foreach (var path in candidates)
-                    if (!_files.ContainsKey(path)) _files[path] = new Cursor();
+                    if (!_files.ContainsKey(path))
+                    {
+                        _files[path] = new Cursor();
+                        _lastTitleLength = -1;
+                    }
                 foreach (var path in _files.Keys.Except(candidates).ToArray()) _files.Remove(path);
                 _lastDiscovery = DateTime.UtcNow;
             }
@@ -63,7 +70,7 @@ public sealed class CompanionActivityReader
                     using var header = new StreamReader(stream, Encoding.UTF8, false, 4096, true);
                     var first = header.ReadLine();
                     if (first is not null) ApplyLine(cursor.Activity, first);
-                    stream.Position = Math.Max(0, stream.Length - 2 * 1024 * 1024);
+                    stream.Position = Math.Max(0, stream.Length - MaxTailBytes);
                     if (stream.Position > 0)
                     {
                         // Skip the partial first record at a bounded initial tail.
@@ -71,12 +78,22 @@ public sealed class CompanionActivityReader
                         do { b = stream.ReadByte(); } while (b != -1 && b != '\n');
                     }
                 }
-                else stream.Position = cursor.Offset;
+                else
+                {
+                    stream.Position = cursor.Offset;
+                    if (stream.Length - cursor.Offset > MaxTailBytes)
+                    {
+                        stream.Position = stream.Length - MaxTailBytes;
+                        cursor.Pending = "";
+                        int b;
+                        do { b = stream.ReadByte(); } while (b != -1 && b != '\n');
+                    }
+                }
                 using var reader = new StreamReader(stream, Encoding.UTF8, false, 4096, true);
                 var text = cursor.Pending + reader.ReadToEnd();
                 cursor.Offset = stream.Position;
                 var lastNewline = text.LastIndexOf('\n');
-                if (lastNewline < 0) { cursor.Pending = text; continue; }
+                if (lastNewline < 0) { cursor.Pending = text.Length <= MaxTailBytes ? text : ""; continue; }
                 foreach (var line in text[..lastNewline].Split('\n')) ApplyLine(cursor.Activity, line);
                 cursor.Pending = text[(lastNewline + 1)..];
             }
@@ -94,6 +111,10 @@ public sealed class CompanionActivityReader
     {
         var index = Path.Combine(_home, "session_index.jsonl");
         if (!File.Exists(index)) return;
+        var metadata = new FileInfo(index);
+        if (metadata.Length == _lastTitleLength && metadata.LastWriteTimeUtc == _lastTitleWrite) return;
+        _lastTitleLength = metadata.Length;
+        _lastTitleWrite = metadata.LastWriteTimeUtc;
         using var stream = new FileStream(index, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         stream.Position = Math.Max(0, stream.Length - 256 * 1024);
         using var reader = new StreamReader(stream);

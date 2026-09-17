@@ -15,6 +15,8 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        // Screen caches its first bounds. Set DPI before preflight, diagnostics or WPF touch it.
+        System.Windows.Forms.Application.SetHighDpiMode(System.Windows.Forms.HighDpiMode.PerMonitorV2);
         if (args.Length == 2 && args[0] == "--diagnose")
         {
             return Infrastructure.Codex.CompanionDiagnostics.RunAsync(args[1]).GetAwaiter().GetResult();
@@ -44,8 +46,25 @@ internal static class Program
             return -1;
         }
 
+        if (!args.Contains("--classic", StringComparer.OrdinalIgnoreCase))
+        {
+            // No WPF window, task logs or quota CLI before both Codex and its pet are open.
+            var anchor = CompanionDesktopTracker.Read();
+            if (args.Contains("--recover", StringComparer.OrdinalIgnoreCase))
+            {
+                var deadline = DateTime.UtcNow.AddSeconds(20);
+                while (!anchor.DesktopOpen && DateTime.UtcNow < deadline)
+                {
+                    Thread.Sleep(500);
+                    anchor = CompanionDesktopTracker.Read();
+                }
+            }
+            if (!CompanionDesktopTracker.ShouldRun(anchor)) return 0;
+        }
+
         var application = new App();
-        application.InitializeComponent();
+        if (args.Contains("--classic", StringComparer.OrdinalIgnoreCase)) application.InitializeComponent();
+        else application.ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown;
         return application.Run();
     }
 

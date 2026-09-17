@@ -5,6 +5,17 @@ namespace CodexUsageWidget.Tests.Infrastructure;
 public sealed class CompanionPlacementTests
 {
     [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, true)]
+    public void RunsOnlyWithBothDesktopAndPet(bool desktop, bool pet, bool expected)
+    {
+        var anchor = new CompanionAnchor(desktop, pet, 0, 0, 0, 0, 0, 0, 1920, 1080);
+        Assert.Equal(expected, CompanionDesktopTracker.ShouldRun(anchor));
+    }
+
+    [Theory]
     [InlineData(0, 0, 168)]
     [InlineData(2300, 0, 2021)]
     [InlineData(-1920, -1920, -1752)]

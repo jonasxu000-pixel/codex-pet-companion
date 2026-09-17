@@ -11,8 +11,17 @@ public sealed record CompanionAnchor(bool DesktopOpen, bool PetOpen, double X, d
 
 public static class CompanionDesktopTracker
 {
+    private static int _desktopProcessId;
+    private static DateTimeOffset _desktopStarted;
+    private static CompanionAnchor? _cachedAnchor;
+    private static string? _cachedStatePath, _cachedScreens;
+    private static long _cachedStateLength;
+    private static DateTime _cachedStateWrite;
+
     public static string CodexHome => Environment.GetEnvironmentVariable("CODEX_HOME") ??
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex");
+
+    public static bool ShouldRun(CompanionAnchor anchor) => anchor.DesktopOpen && anchor.PetOpen;
 
     public static CompanionAnchor Read()
     {
@@ -23,7 +32,13 @@ public static class CompanionDesktopTracker
         if (!open) return fallback;
         try
         {
-            using var file = new FileStream(Path.Combine(CodexHome, ".codex-global-state.json"), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            var statePath = Path.Combine(CodexHome, ".codex-global-state.json");
+            var metadata = new FileInfo(statePath);
+            var screens = string.Join(";", System.Windows.Forms.Screen.AllScreens.Select(s => s.Bounds.ToString() + s.WorkingArea));
+            if (_cachedAnchor is not null && statePath == _cachedStatePath && screens == _cachedScreens &&
+                metadata.Length == _cachedStateLength && metadata.LastWriteTimeUtc == _cachedStateWrite)
+                return _cachedAnchor;
+            using var file = new FileStream(statePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             using var doc = JsonDocument.Parse(file);
             var root = doc.RootElement;
             var atom = root.TryGetProperty("electron-persisted-atom-state", out var a) ? a : root;
@@ -49,7 +64,10 @@ public static class CompanionDesktopTracker
                 x = monitor.Bounds.X + (x - dx) * sx; y = monitor.Bounds.Y + (y - dy) * sy;
                 width *= sx; height *= sy; screen = monitor.WorkingArea;
             }
-            return new CompanionAnchor(open, true, x, y, width, height, screen.X, screen.Y, screen.Width, screen.Height);
+            _cachedStatePath = statePath; _cachedScreens = screens;
+            _cachedStateLength = metadata.Length; _cachedStateWrite = metadata.LastWriteTimeUtc;
+            _cachedAnchor = new CompanionAnchor(open, true, x, y, width, height, screen.X, screen.Y, screen.Width, screen.Height);
+            return _cachedAnchor;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
@@ -61,6 +79,17 @@ public static class CompanionDesktopTracker
     {
         var starts = new List<DateTimeOffset>();
         using var current = Process.GetCurrentProcess();
+        if (_desktopProcessId != 0)
+        {
+            try
+            {
+                using var known = Process.GetProcessById(_desktopProcessId);
+                if (known.SessionId == current.SessionId && known.StartTime.ToUniversalTime() == _desktopStarted &&
+                    known.MainWindowHandle != IntPtr.Zero) return [_desktopStarted];
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception) { }
+            _desktopProcessId = 0;
+        }
         foreach (var name in new[] { "ChatGPT", "Codex" })
         foreach (var process in Process.GetProcessesByName(name))
         {
@@ -70,7 +99,12 @@ public static class CompanionDesktopTracker
                 {
                     if (process.SessionId == current.SessionId && process.MainWindowHandle != IntPtr.Zero &&
                         (process.MainModule?.FileName.Contains("OpenAI.Codex", StringComparison.OrdinalIgnoreCase) == true ||
-                         name == "Codex")) starts.Add(process.StartTime.ToUniversalTime());
+                         name == "Codex"))
+                    {
+                        _desktopProcessId = process.Id;
+                        _desktopStarted = process.StartTime.ToUniversalTime();
+                        starts.Add(_desktopStarted);
+                    }
                 }
                 catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) { }
             }
