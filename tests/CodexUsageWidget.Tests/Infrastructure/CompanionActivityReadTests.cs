@@ -22,7 +22,8 @@ public sealed class CompanionActivityReadTests : IDisposable
     public void InitialLargeTailPreservesSessionIdentityAndLatestActivity()
     {
         File.WriteAllText(SessionFile, Header + "\n" + new string('x', 1024 * 1024) + "\n" + Started + "\n");
-        var activity = Assert.Single(new CompanionActivityReader(_folder).Read());
+        using var reader = new CompanionActivityReader(_folder);
+        var activity = Assert.Single(reader.Read());
         Assert.Equal("s1", activity.Id);
         Assert.Equal("active", activity.State);
     }
@@ -31,7 +32,7 @@ public sealed class CompanionActivityReadTests : IDisposable
     public void LargeAppendAndPartialFinalRecordAreBoundedAndRecoverOnNewline()
     {
         File.WriteAllText(SessionFile, Header + "\n");
-        var reader = new CompanionActivityReader(_folder);
+        using var reader = new CompanionActivityReader(_folder);
         Assert.Empty(reader.Read());
         File.AppendAllText(SessionFile, new string('x', 1024 * 1024) + "\n" + Started);
         Assert.Empty(reader.Read());
@@ -45,7 +46,7 @@ public sealed class CompanionActivityReadTests : IDisposable
         File.WriteAllText(SessionFile, Header + "\n" + Started + "\n");
         var index = Path.Combine(_folder, "session_index.jsonl");
         File.WriteAllText(index, "{\"id\":\"s1\",\"thread_name\":\"Before\"}\n");
-        var reader = new CompanionActivityReader(_folder);
+        using var reader = new CompanionActivityReader(_folder);
         Assert.Equal("Before", Assert.Single(reader.Read()).Title);
         Assert.Equal("Before", Assert.Single(reader.Read()).Title);
         File.WriteAllText(index, "{\"id\":\"s1\",\"thread_name\":\"Changed title\"}\n");
@@ -56,5 +57,15 @@ public sealed class CompanionActivityReadTests : IDisposable
     {
         if (Directory.Exists(_folder)) Directory.Delete(_folder, true);
         GC.SuppressFinalize(this);
+    }
+
+    [Fact]
+    public void ResumedConversationInOldDateFolderIsStillDiscovered()
+    {
+        var oldDirectory = Path.Combine(_folder, "sessions", DateTime.Now.AddMonths(-1).ToString("yyyy/MM/dd", CultureInfo.InvariantCulture));
+        Directory.CreateDirectory(oldDirectory);
+        File.WriteAllText(Path.Combine(oldDirectory, "resumed.jsonl"), Header + "\n" + Started + "\n");
+        using var reader = new CompanionActivityReader(_folder);
+        Assert.Equal("s1", Assert.Single(reader.Read()).Id);
     }
 }

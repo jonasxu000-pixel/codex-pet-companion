@@ -55,6 +55,7 @@ public partial class App : System.Windows.Application, IDisposable
                 var recovery = e.Args.Contains("--recover", StringComparer.OrdinalIgnoreCase);
                 if (recovery && !CompanionRecoveryGate.Current.CanRecover(CompanionDesktopTracker.DesktopStartTimes()))
                 {
+                    _logger.Info("Startup skipped: user paused recovery for this Codex instance.");
                     Shutdown();
                     return;
                 }

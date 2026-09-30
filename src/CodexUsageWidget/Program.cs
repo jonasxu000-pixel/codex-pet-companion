@@ -6,6 +6,7 @@ using CodexUsageWidget.Infrastructure;
 using CodexUsageWidget.Infrastructure.Codex.Hooks;
 using CodexUsageWidget.Infrastructure.Settings;
 using CodexUsageWidget.Infrastructure.Windows;
+using CodexUsageWidget.Infrastructure.Logging;
 using CodexUsageWidget.Localization;
 
 namespace CodexUsageWidget;
@@ -50,16 +51,28 @@ internal static class Program
         {
             // No WPF window, task logs or quota CLI before both Codex and its pet are open.
             var anchor = CompanionDesktopTracker.Read();
+            var logger = new FileLogger(AppPaths.LogDirectory);
+            logger.Info($"Startup preflight; version {typeof(Program).Assembly.GetName().Version}; desktop={anchor.DesktopOpen}, pet={anchor.PetOpen}.");
             if (args.Contains("--recover", StringComparer.OrdinalIgnoreCase))
             {
-                var deadline = DateTime.UtcNow.AddSeconds(20);
-                while (!anchor.DesktopOpen && DateTime.UtcNow < deadline)
+                var timer = Stopwatch.StartNew();
+                var desktopSeen = anchor.DesktopOpen;
+                CompanionStartupDecision decision;
+                while ((decision = CompanionStartupPolicy.Decide(anchor,
+                    CompanionDesktopTracker.HasDesktopWindow(), timer.Elapsed, desktopSeen)) == CompanionStartupDecision.Wait)
                 {
-                    Thread.Sleep(500);
+                    Thread.Sleep(1000);
                     anchor = CompanionDesktopTracker.Read();
+                    desktopSeen |= anchor.DesktopOpen;
                 }
+                logger.Info($"Startup preflight finished: {decision}; elapsed={timer.Elapsed.TotalSeconds:0.0}s; desktop={anchor.DesktopOpen}, pet={anchor.PetOpen}.");
+                if (decision != CompanionStartupDecision.Ready) return 0;
             }
-            if (!CompanionDesktopTracker.ShouldRun(anchor)) return 0;
+            if (!CompanionDesktopTracker.ShouldRun(anchor))
+            {
+                logger.Info("Startup skipped: Codex or pet is not open.");
+                return 0;
+            }
         }
 
         var application = new App();

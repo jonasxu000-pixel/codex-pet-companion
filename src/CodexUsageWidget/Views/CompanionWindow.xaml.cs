@@ -14,6 +14,9 @@ namespace CodexUsageWidget.Views;
 
 public partial class CompanionWindow : Window, IAsyncDisposable
 {
+    private static readonly SolidColorBrush Sage = new(System.Windows.Media.Color.FromRgb(105, 129, 106));
+    private static readonly SolidColorBrush Amber = new(System.Windows.Media.Color.FromRgb(154, 118, 64));
+    private static readonly SolidColorBrush Terracotta = new(System.Windows.Media.Color.FromRgb(165, 100, 79));
     private readonly UsageMonitor _usage = new(new CompanionUsageProvider(), requestTimeout: TimeSpan.FromSeconds(20));
     private readonly CompanionActivityReader _activity = new(CompanionDesktopTracker.CodexHome);
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(200) };
@@ -99,7 +102,7 @@ public partial class CompanionWindow : Window, IAsyncDisposable
                 _absentReads = CompanionDesktopTracker.ShouldRun(_anchor) ? 0 : _absentReads + 1;
                 if (_absentReads >= 3)
                 {
-                    _logger.Info("Codex or pet closed; exiting without a resident watcher.");
+                    _logger.Info($"Exiting after confirmed absence; desktop={_anchor.DesktopOpen}, pet={_anchor.PetOpen}; no resident watcher.");
                     Close();
                     return;
                 }
@@ -167,7 +170,11 @@ public partial class CompanionWindow : Window, IAsyncDisposable
         }
         SourceText.Text = _snapshot is null ? "额度尚未同步" : $"额度更新于 {_snapshot.FetchedAt.ToLocalTime():HH:mm:ss} · 每分钟刷新";
         ErrorText.Text = _quotaError ?? _activity.Error ?? (_anchor?.PetOpen == false ? "宠物未开启 · 暂时显示为独立卡片" : "");
-        Dot.Fill = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(_quotaError is not null || expired ? "#B8864C" : "#69816A"));
+        var quotaColor = stale || expired || five is null ? Amber : five.RemainingPercent <= 10 ? Terracotta : five.RemainingPercent <= 20 ? Amber : Sage;
+        Dot.Fill = quotaColor;
+        QuotaBar.Foreground = quotaColor;
+        QuotaState.Foreground = quotaColor;
+        QuotaState.Text = stale ? "上次同步的额度" : expired ? "等待重置确认" : five is null ? "正在同步" : five.RemainingPercent <= 10 ? "剩余额度较少" : five.RemainingPercent <= 20 ? "留意剩余额度" : "额度充足";
         ProgressText.Visibility = string.IsNullOrWhiteSpace(ProgressText.Text) ? Visibility.Collapsed : Visibility.Visible;
         ErrorText.Visibility = string.IsNullOrWhiteSpace(ErrorText.Text) ? Visibility.Collapsed : Visibility.Visible;
         _tray.Text = $"Codex 小助手 · 5h {BadgeValue.Text}";
@@ -234,7 +241,8 @@ public partial class CompanionWindow : Window, IAsyncDisposable
         if (_closing) return;
         _closing = true; DetailsPopup.IsOpen = false; _timer.Stop(); _tray.Dispose();
         await _lifetime.CancelAsync();
-        while (_refreshing) await Task.Delay(50);
+        while (_refreshing || _busy) await Task.Delay(50);
+        _activity.Dispose();
         await _usage.DisposeAsync();
         _lifetime.Dispose();
         GC.SuppressFinalize(this);

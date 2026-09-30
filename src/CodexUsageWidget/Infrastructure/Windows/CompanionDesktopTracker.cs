@@ -17,6 +17,7 @@ public static class CompanionDesktopTracker
     private static string? _cachedStatePath, _cachedScreens;
     private static long _cachedStateLength;
     private static DateTime _cachedStateWrite;
+    private static DateTime _lastValidStateRead;
 
     public static string CodexHome => Environment.GetEnvironmentVariable("CODEX_HOME") ??
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex");
@@ -37,14 +38,21 @@ public static class CompanionDesktopTracker
             var screens = string.Join(";", System.Windows.Forms.Screen.AllScreens.Select(s => s.Bounds.ToString() + s.WorkingArea));
             if (_cachedAnchor is not null && statePath == _cachedStatePath && screens == _cachedScreens &&
                 metadata.Length == _cachedStateLength && metadata.LastWriteTimeUtc == _cachedStateWrite)
+            {
+                _lastValidStateRead = DateTime.UtcNow;
                 return _cachedAnchor;
+            }
             using var file = new FileStream(statePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             using var doc = JsonDocument.Parse(file);
             var root = doc.RootElement;
             var atom = root.TryGetProperty("electron-persisted-atom-state", out var a) ? a : root;
             var petOpen = Property(root, atom, "electron-avatar-overlay-open");
             var bounds = Property(root, atom, "electron-avatar-overlay-bounds");
-            if (petOpen.ValueKind != JsonValueKind.True || bounds.ValueKind != JsonValueKind.Object) return fallback;
+            if (petOpen.ValueKind != JsonValueKind.True || bounds.ValueKind != JsonValueKind.Object)
+            {
+                _cachedAnchor = null;
+                return fallback;
+            }
             var x = Number(bounds, "x"); var y = Number(bounds, "y");
             double width = 100, height = 100;
             if (bounds.TryGetProperty("mascot", out var mascot))
@@ -66,11 +74,15 @@ public static class CompanionDesktopTracker
             }
             _cachedStatePath = statePath; _cachedScreens = screens;
             _cachedStateLength = metadata.Length; _cachedStateWrite = metadata.LastWriteTimeUtc;
+            _lastValidStateRead = DateTime.UtcNow;
             _cachedAnchor = new CompanionAnchor(open, true, x, y, width, height, screen.X, screen.Y, screen.Width, screen.Height);
             return _cachedAnchor;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
+            // Atomic state-file replacement and short read failures are not a pet-close event.
+            if (_cachedAnchor is not null && DateTime.UtcNow - _lastValidStateRead < TimeSpan.FromSeconds(10))
+                return _cachedAnchor;
             return fallback;
         }
     }
@@ -85,7 +97,7 @@ public static class CompanionDesktopTracker
             {
                 using var known = Process.GetProcessById(_desktopProcessId);
                 if (known.SessionId == current.SessionId && known.StartTime.ToUniversalTime() == _desktopStarted &&
-                    known.MainWindowHandle != IntPtr.Zero) return [_desktopStarted];
+                    !known.HasExited) return [_desktopStarted];
             }
             catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception) { }
             _desktopProcessId = 0;
@@ -97,9 +109,10 @@ public static class CompanionDesktopTracker
             {
                 try
                 {
-                    if (process.SessionId == current.SessionId && process.MainWindowHandle != IntPtr.Zero &&
-                        (process.MainModule?.FileName.Contains("OpenAI.Codex", StringComparison.OrdinalIgnoreCase) == true ||
-                         name == "Codex"))
+                    var path = process.MainModule?.FileName;
+                    if (process.SessionId == current.SessionId && path is not null && IsDesktopExecutable(path) &&
+                        (process.MainWindowHandle != IntPtr.Zero || IsRootDesktopProcess(process.Id)) &&
+                        !process.HasExited)
                     {
                         _desktopProcessId = process.Id;
                         _desktopStarted = process.StartTime.ToUniversalTime();
@@ -111,6 +124,63 @@ public static class CompanionDesktopTracker
         }
         return starts;
     }
+
+    public static bool IsDesktopExecutable(string path) =>
+        path.Contains("OpenAI.Codex", StringComparison.OrdinalIgnoreCase) ||
+        File.Exists(Path.Combine(Path.GetDirectoryName(path) ?? "", "resources", "app.asar"));
+
+    public static bool HasDesktopWindow()
+    {
+        if (DesktopStartTimes().Count == 0) return false;
+        try
+        {
+            using var process = Process.GetProcessById(_desktopProcessId);
+            return process.MainWindowHandle != IntPtr.Zero;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        { return false; }
+    }
+
+    private static bool IsRootDesktopProcess(int processId)
+    {
+        // Electron renderers have a Codex parent. The root survives window hiding,
+        // recreation and slow startup; no WMI process watcher is required.
+        var snapshot = CreateToolhelp32Snapshot(2, 0);
+        if (snapshot == new IntPtr(-1)) return false;
+        try
+        {
+            var entry = new ProcessEntry { Size = (uint)Marshal.SizeOf<ProcessEntry>() };
+            if (!Process32First(snapshot, ref entry)) return false;
+            do
+            {
+                if (entry.ProcessId != processId) continue;
+                try
+                {
+                    using var parent = Process.GetProcessById((int)entry.ParentProcessId);
+                    return parent.ProcessName is not ("ChatGPT" or "Codex");
+                }
+                catch (ArgumentException) { return true; }
+                catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception) { return false; }
+            } while (Process32Next(snapshot, ref entry));
+            return false;
+        }
+        finally { CloseHandle(snapshot); }
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct ProcessEntry
+    {
+        public uint Size, Usage, ProcessId;
+        public UIntPtr DefaultHeapId;
+        public uint ModuleId, Threads, ParentProcessId;
+        public int Priority;
+        public uint Flags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string ExeFile;
+    }
+    [DllImport("kernel32.dll")] private static extern IntPtr CreateToolhelp32Snapshot(uint flags, uint processId);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern bool Process32First(IntPtr snapshot, ref ProcessEntry entry);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern bool Process32Next(IntPtr snapshot, ref ProcessEntry entry);
+    [DllImport("kernel32.dll")] private static extern bool CloseHandle(IntPtr handle);
 
     private static JsonElement Property(JsonElement root, JsonElement atom, string name) =>
         root.TryGetProperty(name, out var value) ? value : atom.TryGetProperty(name, out value) ? value : default;

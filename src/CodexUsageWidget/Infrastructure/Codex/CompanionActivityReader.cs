@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using System.Collections.Concurrent;
 
 namespace CodexUsageWidget.Infrastructure.Codex;
 
@@ -17,7 +18,7 @@ public sealed class CompanionActivity
 }
 
 /// <summary>Reads only event metadata and public commentary. Reasoning contents and tool output are ignored.</summary>
-public sealed class CompanionActivityReader
+public sealed class CompanionActivityReader : IDisposable
 {
     private sealed class Cursor
     {
@@ -32,6 +33,9 @@ public sealed class CompanionActivityReader
     private DateTime _lastTitleWrite;
     private long _lastTitleLength = -1;
     private const int MaxTailBytes = 256 * 1024;
+    private readonly ConcurrentDictionary<string, byte> _changedPaths = new(StringComparer.OrdinalIgnoreCase);
+    private FileSystemWatcher? _watcher;
+    private volatile bool _initialDiscovery;
     public string? Error { get; private set; }
 
     public CompanionActivityReader(string home) => _home = home;
@@ -44,12 +48,29 @@ public sealed class CompanionActivityReader
             if (DateTime.UtcNow - _lastDiscovery > TimeSpan.FromSeconds(10))
             {
                 var root = Path.Combine(_home, "sessions");
-                // Discover recent partitions only; never scan the entire transcript history every tick.
-                var candidates = Enumerable.Range(0, 7).Select(offset =>
-                    Path.Combine(root, DateTime.Now.AddDays(-offset).ToString("yyyy/MM/dd", System.Globalization.CultureInfo.InvariantCulture)))
-                    .Where(Directory.Exists)
-                    .SelectMany(dir => Directory.EnumerateFiles(dir, "*.jsonl"))
+                if (_watcher is null && Directory.Exists(root))
+                {
+                    _watcher = new FileSystemWatcher(root, "*.jsonl")
+                    {
+                        IncludeSubdirectories = true,
+                        NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName
+                    };
+                    _watcher.Changed += FileChanged;
+                    _watcher.Created += FileChanged;
+                    _watcher.Renamed += FileChanged;
+                    _watcher.Error += (_, _) => _initialDiscovery = false;
+                    _watcher.EnableRaisingEvents = true;
+                }
+                // Conversations retain their creation-date folder when resumed weeks later.
+                // Scan file metadata once, then merge bounded OS file-change notifications.
+                var changes = _changedPaths.Keys.ToArray();
+                foreach (var path in changes) _changedPaths.TryRemove(path, out _);
+                var paths = !_initialDiscovery && Directory.Exists(root)
+                    ? Directory.EnumerateFiles(root, "*.jsonl", SearchOption.AllDirectories).Take(50000)
+                    : _files.Keys.Concat(changes);
+                var candidates = paths.Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase)
                     .OrderByDescending(File.GetLastWriteTimeUtc).Take(24).ToArray();
+                _initialDiscovery = Directory.Exists(root);
                 foreach (var path in candidates)
                     if (!_files.ContainsKey(path))
                     {
@@ -105,6 +126,20 @@ public sealed class CompanionActivityReader
         }
         return _files.Values.Select(c => c.Activity).Where(a => a.LastActivity != default)
             .OrderByDescending(a => a.LastActivity).ToArray();
+    }
+
+    private void FileChanged(object sender, FileSystemEventArgs e)
+    {
+        if (_changedPaths.Count < 256) _changedPaths.TryAdd(e.FullPath, 0);
+        else _initialDiscovery = false; // Recover a burst with one bounded metadata scan.
+    }
+
+    public void Dispose()
+    {
+        _watcher?.Dispose();
+        _watcher = null;
+        _changedPaths.Clear();
+        GC.SuppressFinalize(this);
     }
 
     private void ApplyTitles()

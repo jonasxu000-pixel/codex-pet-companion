@@ -65,6 +65,8 @@ $definition.Settings.DisallowStartIfOnBatteries = $false
 $definition.Settings.StopIfGoingOnBatteries = $false
 $definition.Settings.ExecutionTimeLimit = 'PT0S'
 $definition.Settings.MultipleInstances = 2
+$definition.Settings.RestartCount = 2
+$definition.Settings.RestartInterval = 'PT1M'
 $activation = $definition.Triggers.Create(0)
 $activation.Delay = 'PT3S'
 $activation.Subscription = '<QueryList><Query Id="0" Path="Microsoft-Windows-TWinUI/Operational"><Select Path="Microsoft-Windows-TWinUI/Operational">*[System[EventID=1621]] and *[EventData[Data[@Name=''ApplicationId'']=''OpenAI.Codex_2p2nqsd0c76g0!App'']]</Select></Query><Query Id="1" Path="Microsoft-Windows-AppModel-Runtime/Admin"><Select Path="Microsoft-Windows-AppModel-Runtime/Admin">*[System[EventID=201]] and *[EventData[Data[@Name=''ApplicationName'']=''OpenAI.Codex_2p2nqsd0c76g0!App'']]</Select></Query></QueryList>'

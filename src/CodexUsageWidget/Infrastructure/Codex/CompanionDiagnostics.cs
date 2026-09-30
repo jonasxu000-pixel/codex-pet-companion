@@ -9,7 +9,8 @@ public static class CompanionDiagnostics
     public static async Task<int> RunAsync(string outputPath)
     {
         var anchor = CompanionDesktopTracker.Read();
-        var activity = new CompanionActivityReader(CompanionDesktopTracker.CodexHome).Read();
+        using var reader = new CompanionActivityReader(CompanionDesktopTracker.CodexHome);
+        var activity = reader.Read();
         try
         {
             await using var provider = new CodexUsageProvider(new CodexAppServerSession());
